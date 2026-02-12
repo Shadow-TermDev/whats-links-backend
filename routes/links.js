@@ -1,5 +1,5 @@
 import express from 'express';
-import { getDB, saveDB } from '../db.js';
+import { getDB } from '../db.js';
 import { verifyToken } from './auth.js';
 
 const router = express.Router();
@@ -23,32 +23,26 @@ router.post('/', verifyToken, (req, res) => {
 
   try {
     // ===== Buscar o crear categoría =====
-    let catResult = db.exec('SELECT id FROM categories WHERE name = ?', [category]);
+    let catRow = db.prepare('SELECT id FROM categories WHERE name = ?').get(category);
     let categoryId;
-    if (catResult.length) {
-      categoryId = catResult[0].values[0][0];
+    if (catRow) {
+      categoryId = catRow.id;
     } else {
-      db.run('INSERT INTO categories (name, created_by) VALUES (?, ?)', [category, req.user.id]);
-      const newCat = db.exec('SELECT id FROM categories WHERE name = ?', [category]);
-      categoryId = newCat[0].values[0][0];
+      const result = db.prepare('INSERT INTO categories (name, created_by) VALUES (?, ?)').run(category, req.user.id);
+      categoryId = result.lastInsertRowid;
     }
 
     // ===== Verificar si el link ya existe =====
-    const exists = db.exec(
-      'SELECT id FROM links WHERE url = ? AND user_id = ?',
-      [url, req.user.id]
-    );
-    if (exists.length) {
+    const exists = db.prepare('SELECT id FROM links WHERE url = ? AND user_id = ?').get(url, req.user.id);
+    if (exists) {
       return res.status(400).json({ message: 'Este link ya fue subido' });
     }
 
     // ===== Insertar link =====
-    db.run(
-      'INSERT INTO links (user_id, name, url, type, category_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.user.id, name, url, type, categoryId, new Date().toISOString()]
-    );
+    db.prepare(
+      'INSERT INTO links (user_id, name, url, type, category_id, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(req.user.id, name, url, type, categoryId, new Date().toISOString());
 
-    saveDB();
     res.status(201).json({ message: 'Link subido correctamente' });
   } catch (err) {
     console.error(err);
@@ -61,31 +55,19 @@ router.get('/', verifyToken, (req, res) => {
   const db = getDB();
 
   try {
-    // ===== Solución: usar JOIN y seleccionar columnas existentes =====
-    const result = db.exec(`
-      SELECT 
+    const links = db.prepare(`
+      SELECT
         links.id,
         links.name,
         links.url,
         links.type,
-        users.username AS owner,
+        users.username AS username,
         categories.name AS category
       FROM links
       LEFT JOIN users ON links.user_id = users.id
       LEFT JOIN categories ON links.category_id = categories.id
       ORDER BY links.created_at DESC
-    `);
-
-    const links = result.length
-      ? result[0].values.map(r => ({
-          id: r[0],
-          name: r[1],
-          url: r[2],
-          type: r[3],
-          username: r[4],
-          category: r[5]
-        }))
-      : [];
+    `).all();
 
     res.json(links);
   } catch (err) {
@@ -100,8 +82,7 @@ router.delete('/:id', verifyToken, (req, res) => {
   const linkId = req.params.id;
 
   try {
-    db.run('DELETE FROM links WHERE id = ? AND user_id = ?', [linkId, req.user.id]);
-    saveDB();
+    db.prepare('DELETE FROM links WHERE id = ? AND user_id = ?').run(linkId, req.user.id);
     res.json({ message: 'Link eliminado correctamente' });
   } catch (err) {
     console.error(err);
@@ -109,14 +90,11 @@ router.delete('/:id', verifyToken, (req, res) => {
   }
 });
 
-// ===== Listar categorías (para frontend) =====
+// ===== Listar categorías =====
 router.get('/categories', verifyToken, (req, res) => {
   const db = getDB();
   try {
-    const result = db.exec('SELECT id, name, created_by FROM categories ORDER BY name ASC');
-    const categories = result.length
-      ? result[0].values.map(r => ({ id: r[0], name: r[1], created_by: r[2] }))
-      : [];
+    const categories = db.prepare('SELECT id, name, created_by FROM categories ORDER BY name ASC').all();
     res.json(categories);
   } catch (err) {
     console.error(err);
@@ -124,21 +102,19 @@ router.get('/categories', verifyToken, (req, res) => {
   }
 });
 
-// ===== Eliminar categoría (solo admins o creador) =====
+// ===== Eliminar categoría =====
 router.delete('/categories/:id', verifyToken, (req, res) => {
   const db = getDB();
   const catId = req.params.id;
 
   try {
-    const result = db.exec('SELECT created_by FROM categories WHERE id = ?', [catId]);
-    if (!result.length) return res.status(404).json({ message: 'Categoría no encontrada' });
+    const cat = db.prepare('SELECT created_by FROM categories WHERE id = ?').get(catId);
+    if (!cat) return res.status(404).json({ message: 'Categoría no encontrada' });
 
-    const creatorId = result[0].values[0][0];
-    if (req.user.role !== 'admin' && req.user.id !== creatorId)
+    if (req.user.role !== 'admin' && req.user.id !== cat.created_by)
       return res.status(403).json({ message: 'No tienes permiso para eliminar esta categoría' });
 
-    db.run('DELETE FROM categories WHERE id = ?', [catId]);
-    saveDB();
+    db.prepare('DELETE FROM categories WHERE id = ?').run(catId);
     res.json({ message: 'Categoría eliminada correctamente' });
   } catch (err) {
     console.error(err);

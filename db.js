@@ -1,29 +1,26 @@
-import fs from 'fs';
-import initSqlJs from 'sql.js';
+import Database from 'better-sqlite3';
 import bcrypt from 'bcryptjs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const DB_FILE = 'database.sqlite';
-let SQL;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const DB_FILE = path.join(__dirname, 'database.sqlite');
+
 let db;
 
 /* =========================
    INICIALIZAR BASE DE DATOS
 ========================= */
 export async function initDB() {
-  SQL = await initSqlJs();
+  db = new Database(DB_FILE);
 
-  // Cargar base de datos si existe, sino crear nueva
-  if (fs.existsSync(DB_FILE)) {
-    const filebuffer = fs.readFileSync(DB_FILE);
-    db = new SQL.Database(filebuffer);
-    console.log('Base de datos cargada ✅');
-  } else {
-    db = new SQL.Database();
-    console.log('Nueva base de datos creada ✅');
-  }
+  // WAL mode para mejor rendimiento
+  db.pragma('journal_mode = WAL');
 
   // ===== Tabla users =====
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -34,7 +31,7 @@ export async function initDB() {
   `);
 
   // ===== Tabla categories =====
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -45,7 +42,7 @@ export async function initDB() {
   `);
 
   // ===== Tabla links =====
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -60,13 +57,14 @@ export async function initDB() {
   `);
 
   // ===== Crear admin predefinido =====
-  const adminCheck = db.exec("SELECT id FROM users WHERE username='Erick'");
-  if (!adminCheck.length) {
+  const adminCheck = db.prepare("SELECT id FROM users WHERE username='Erick'").get();
+  if (!adminCheck) {
     const hashed = await bcrypt.hash('admingod123', 10);
-    db.run('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', ['Erick', hashed, 'admin']);
-    saveDB();
+    db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('Erick', hashed, 'admin');
     console.log('Admin predefinido Erick creado ✅');
   }
+
+  console.log('Base de datos lista ✅');
 }
 
 /* =========================
@@ -77,9 +75,8 @@ export function getDB() {
 }
 
 /* =========================
-   GUARDAR DB
+   GUARDAR DB (no-op con better-sqlite3, escribe automáticamente)
 ========================= */
 export function saveDB() {
-  const data = db.export();
-  fs.writeFileSync(DB_FILE, Buffer.from(data));
+  // better-sqlite3 escribe directamente al archivo, no necesita export manual
 }
