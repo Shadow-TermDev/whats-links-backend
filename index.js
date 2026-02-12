@@ -8,12 +8,9 @@ import { initDB } from './db.js';
 
 const app = express();
 
-// ===== Inicializar base de datos =====
-await initDB();
-
 // ===== Middleware =====
 app.use(cors({
-  origin: '*', // Cambia por tu dominio de Netlify/Vercel cuando lo tengas
+  origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -30,8 +27,16 @@ app.get('/', (req, res) => {
   res.json({ message: 'API WhatsApp Links funcionando ✅' });
 });
 
-// ===== Iniciar servidor =====
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+// ===== Arranque =====
+async function main() {
+  await initDB();
+  const PORT = parseInt(process.env.PORT, 10) || 5000;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  });
+}
+
+main().catch(err => {
+  console.error('Error fatal al iniciar:', err);
+  process.exit(1);
 });
