@@ -57,15 +57,27 @@ export async function initDB() {
   `);
 
   // ===== Crear admin predefinido =====
-  const adminCheck = db.prepare("SELECT id FROM users WHERE username='Erick'").get();
-  if (!adminCheck) {
-    const hashed = await bcrypt.hash('admingod123', 10);
-    db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('Erick', hashed, 'admin');
-    console.log('Admin predefinido Erick creado ✅');
-  }
+  const adminUsername = process.env.ADMIN_USERNAME || "Erick";
+  const adminPassword = process.env.ADMIN_PASSWORD;
 
-  console.log('Base de datos lista ✅');
-}
+  if (!adminPassword) {
+    console.warn("⚠ ADMIN_PASSWORD no definida. No se creará admin.");
+  } else {
+    const adminCheck = db
+      .prepare("SELECT id FROM users WHERE username = ?")
+      .get(adminUsername);
+
+    if (!adminCheck) {
+      const hashed = await bcrypt.hash(adminPassword, 10);
+
+      db.prepare(
+        "INSERT INTO users (username, password, role) VALUES (?, ?, ?)"
+      ).run(adminUsername, hashed, "admin");
+
+      console.log("Admin creado correctamente ✅");
+    }
+    console.log('Base de datos lista ✅');
+  }
 
 /* =========================
    OBTENER DB
