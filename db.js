@@ -16,7 +16,6 @@ let db;
 export async function initDB() {
   db = new Database(DB_FILE);
 
-  // WAL mode para mejor rendimiento
   db.pragma('journal_mode = WAL');
 
   // ===== Tabla users =====
@@ -56,7 +55,7 @@ export async function initDB() {
     );
   `);
 
-  // ===== Crear admin predefinido =====
+  // ===== Crear admin desde variables de entorno =====
   const adminUsername = process.env.ADMIN_USERNAME || "Erick";
   const adminPassword = process.env.ADMIN_PASSWORD;
 
@@ -76,19 +75,14 @@ export async function initDB() {
 
       console.log("Admin creado correctamente ✅");
     }
-    console.log('Base de datos lista ✅');
   }
+
+  console.log("Base de datos lista ✅");
+}
 
 /* =========================
    OBTENER DB
 ========================= */
 export function getDB() {
   return db;
-}
-
-/* =========================
-   GUARDAR DB (no-op con better-sqlite3, escribe automáticamente)
-========================= */
-export function saveDB() {
-  // better-sqlite3 escribe directamente al archivo, no necesita export manual
 }
